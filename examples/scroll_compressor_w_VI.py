@@ -146,7 +146,7 @@ def Compressor(ScrollClass, Te=273, Tc=300, f=None, OneCycle=False, Ref='R410A',
                                  MdotFcn_kwargs=dict(X_d=0.7)
                                  )
                         )
-#     ScrollComp.add_flow(FlowPath(key1 = 'outlet.1',
+#     ScrollComp.add_flow(FlowPath(key2 = 'outlet.1',
 #                                  key2 = 'd1',
 #                                  MdotFcn = ScrollComp.DISC_D1,
 #                                  MdotFcn_kwargs = dict(X_d = 0.7)

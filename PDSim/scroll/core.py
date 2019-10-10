@@ -528,6 +528,22 @@ class Scroll(PDSimCore, _Scroll):
         else:
             return V_tube, 0.0
         
+    def V_discharge(self, theta, V_tube = None):
+        """
+        Volume code for discharge tube
+        
+        The tube volume can either be given by the keyword argument V_tube 
+        (so you can easily have more than one discharge tube), or it can be 
+        provided by setting the Scroll class attribute V_disc_tube 
+        and NOT providing the V_tube argument
+        
+        The discharge tube volume is assumed to be constant, hence the derivative of volume is zero 
+        """
+        if V_tube is None:
+            return self.V_disc_tube, 0.0
+        else:
+            return V_tube, 0.0
+        
     def V_sa(self, theta, full_output=False):
         """
         Wrapper around the Cython code for sa calcs
@@ -2068,6 +2084,50 @@ class Scroll(PDSimCore, _Scroll):
         except ZeroDivisionError:
             return 0.0
      
+    def DISC_DD_Valve(self, FP, X_d = 1.0, check_valve = False):
+        """
+        The flow path function for the flow between discharge port and the DD chamber
+        """
+        
+        FP.A = interp.splev(self.theta, self.spline_Adisc_DD)
+        try:
+            return flow_models.IsentropicNozzle(FP.A, FP.State_up, FP.State_down) * X_d
+        except ZeroDivisionError:
+            return 0.0
+        
+    def DISC_D1_Valve(self, FP, X_d = 1.0, check_valve = False):
+        """
+        The flow path function for the flow between discharge port and the D1 chamber
+        """
+        
+        FP.A = interp.splev(self.theta, self.spline_Adisc_D1)
+        try:
+            return flow_models.IsentropicNozzle(FP.A, FP.State_up, FP.State_down) * X_d
+        except ZeroDivisionError:
+            return 0.0
+    
+    def DISC_C1_N_Valve(self, FP, X_d = 1.0, check_valve = False):
+        """
+        The flow path function for the flow between discharge port and the D1 chamber
+        """
+        
+        FP.A = interp.splev(self.theta, self.spline_Adisc_C1_N)
+        try:
+            return flow_models.IsentropicNozzle(FP.A, FP.State_up, FP.State_down) * X_d
+        except ZeroDivisionError:
+            return 0.0
+            
+    def DISC_C1_Nm1_Valve(self, FP, X_d = 1.0, check_valve = False):
+        """
+        The flow path function for the flow between discharge port and the D1 chamber
+        """
+        
+        FP.A = interp.splev(self.theta, self.spline_Adisc_C1_Nm1)
+        try:
+            return flow_models.IsentropicNozzle(FP.A, FP.State_up, FP.State_down) * X_d
+        except ZeroDivisionError:
+            return 0.0
+     
     def SA_S1(self, FlowPath, X_d = 1.0, X_d_precompression = 1.0):
         """
         A wrapper for the flow between the suction area and the S1 chamber
@@ -2126,115 +2186,221 @@ class Scroll(PDSimCore, _Scroll):
         except ZeroDivisionError:
             return 0.0
         
-#    def _get_injection_CVkey(self,phi,theta,inner_outer):
-#        """
-#        Find the CV that is in contact with the given injection port location
-#        
-#        Parameters
-#        ----------
-#        phi : float
-#            Involute angle of the injection port location
-#        theta : float
-#            Crank angle in radians in the range [:math:`0,2\pi`]
-#        inner_outer : string ['i','o']
-#            'i' : involute angle corresponds to outer surface of fixed scroll
-#            'o' : involute angle corresponds to inner surface of orb. scroll 
-#            
-#        Notes
-#        -----
-#        Typically 'i' will require a positive offset in involute angle of 
-#        :math:`\pi` radians
-#        """
-#        if inner_outer == 'i':
-#            phi_0 = self.geo.phi_i0
-#            phi_s = self.geo.phi_is
-#            phi_e = self.geo.phi_ie
-#        elif inner_outer == 'o':
-#            phi_0 = self.geo.phi_o0
-#            phi_s = self.geo.phi_os
-#            phi_e = self.geo.phi_oe-pi # The actual part of the wrap that could 
-#                                       # have an injection port 
-#        
-#        Nc = scroll_geo.getNc(theta, self.geo)    
-#        #Start at the outside of the given scroll wrap
-#        # x1 where x is s,d,c has the inner involute of the fixed scroll as 
-#        # its outer surface
-#        if phi_e > phi > phi_e-theta:     
-#            #It is a suction chamber    
-#            return 's1' if inner_outer == 'i' else 's2'
-#            
-#        elif phi_e-theta > phi > phi_e-theta-2*pi*Nc:
-#            #It is one of the compression chambers, figure out which one
-#            for I in range(Nc+1):
-#                if phi_e - theta - 2*pi*(I-1) > phi > phi_e - theta - 2*pi*I:
-#                    i_str = '.'+str(I)
-#                    break
-#            return 'c1'+i_str if inner_outer == 'i' else 'c2'+i_str
-#        
-#        else:
-#            return 'd1' if inner_outer == 'i' else 'd2'
-#        
-#    def Injection_to_Comp(self,FlowPath,phi,inner_outer,check_valve = False, A = 7e-6, **kwargs):
-#        """
-#        Function to calculate flow rate between injection line and chamber
-#        
-#        Parameters
-#        ----------
-#        FlowPath : FlowPath instance
-#        phi : involute angle where the port is located
-#        inner_outer : string ['i','o']
-#            'i' : involute angle corresponds to outer surface of fixed scroll
-#            'o' : involute angle corresponds to inner surface of orb. scroll 
-#        check_valve : boolean
-#            If ``True``, there is an idealized check valve and flow can only go 
-#            from chambers with key names that start with `injCV` to other chambers.
-#            If ``False``, flow can go either direction
-#        
-#        """
-#        #1. Figure out what CV is connected to the port
-#        partner_key = self._get_injection_CVkey(phi, self.theta, inner_outer)
-#        FlowPath.A = A
-#        #2. Based on what CV is connected to the port, maybe quit
-#        if partner_key in ['d1', 'd2'] and 'ddd' in [FlowPath.key_up, 
-#                                                     FlowPath.key_down]:
-#            # Other chamber based on geometry is d1 or d2 but they are not 
-#            # defined due to the angle but ddd is, and as a result, use 
-#            # ddd
-#            #
-#            # Don't do anything, just let it go to the next section even though
-#            # 'd1' or 'd2 is not key_up or key_down 
-#            pass
-#        
-#        elif partner_key not in [FlowPath.key_up, FlowPath.key_down]:
-#            return 0.0
-#        # If the pressure in the injection line is below the other chamber and 
-#        # you are using a theoretical check valve with instantaneous closing, 
-#        # then there is no back flow, and hence no flow at all
-#        elif check_valve:
-#            if FlowPath.key_down.startswith('inj'):
-#                return 0.0
-#            
-##                #This will be negative
-##                DELTAp = FlowPath.State_down.p - FlowPath.State_up.p
-##            else:
-##                #This will be positive
-##                DELTAp = FlowPath.State_up.p - FlowPath.State_down.p 
-##            
-##            # Using an approximation to a Heaviside step function to close off the
-##            # port gradually and improve numerical convergence due to continuous
-##            # first derivative
-##            if -10 < DELTAp < 10.0:
-##                FlowPath.A *=  1/(1+np.exp(-10*(DELTAp-2)))
-##            elif DELTAp < -10.0:
-##                return 0.0
-#        
-#        mdot = flow_models.IsentropicNozzle(FlowPath.A,
-#                                            FlowPath.State_up,
-#                                            FlowPath.State_down)
-#        return mdot
+    def _get_injection_CVkey(self,phi,theta,inner_outer):
+        """
+        Find the CV that is in contact with the given injection port location
         
-    def calculate_force_terms(self,
-                              orbiting_back_pressure=None):
+        Parameters
+        ----------
+        phi : float
+            Involute angle of the injection port location
+        theta : float
+            Crank angle in radians in the range [:math:`0,2\pi`]
+        inner_outer : string ['i','o']
+            'i' : involute angle corresponds to outer surface of fixed scroll
+            'o' : involute angle corresponds to inner surface of orb. scroll 
+            
+        Notes
+        -----
+        Typically 'i' will require a positive offset in involute angle of 
+        :math:`\pi` radians
+        """
+        if inner_outer == 'i':
+            phi_0 = self.geo.phi_i0
+            phi_s = self.geo.phi_is
+            phi_e = self.geo.phi_ie
+        elif inner_outer == 'o':
+            phi_0 = self.geo.phi_o0
+            phi_s = self.geo.phi_os
+            phi_e = self.geo.phi_oe-pi # The actual part of the wrap that could 
+                                        # have an injection port 
+        
+        Nc = scroll_geo.getNc(theta, self.geo)    
+        #Start at the outside of the given scroll wrap
+        # x1 where x is s,d,c has the inner involute of the fixed scroll as 
+        # its outer surface
+        if phi_e > phi > phi_e-theta:     
+            #It is a suction chamber    
+            return 's1' if inner_outer == 'i' else 's2'
+            
+        elif phi_e-theta > phi > phi_e-theta-2*pi*Nc:
+            #It is one of the compression chambers, figure out which one
+            for I in range(Nc+1):
+                if phi_e - theta - 2*pi*(I-1) > phi > phi_e - theta - 2*pi*I:
+                    i_str = '.'+str(I)
+                    break
+            return 'c1'+i_str if inner_outer == 'i' else 'c2'+i_str
+        
+        else:
+            return 'd1' if inner_outer == 'i' else 'd2'
+        
+    def Injection_to_Comp(self,FlowPath,phi,inner_outer,check_valve = False, A = 7e-6, **kwargs):
+        """
+        Function to calculate flow rate between injection line and chamber
+        
+        Parameters
+        ----------
+        FlowPath : FlowPath instance
+        phi : involute angle where the port is located
+        inner_outer : string ['i','o']
+            'i' : involute angle corresponds to outer surface of fixed scroll
+            'o' : involute angle corresponds to inner surface of orb. scroll 
+        check_valve : boolean
+            If ``True``, there is an idealized check valve and flow can only go 
+            from chambers with key names that start with `injCV` to other chambers.
+            If ``False``, flow can go either direction
+        
+        """
+        #1. Figure out what CV is connected to the port
+        partner_key = self._get_injection_CVkey(phi, self.theta, inner_outer)
+        FlowPath.A = A
+        #2. Based on what CV is connected to the port, maybe quit
+        if partner_key in ['d1', 'd2'] and 'ddd' in [FlowPath.key_up, 
+                                                        FlowPath.key_down]:
+            # Other chamber based on geometry is d1 or d2 but they are not 
+            # defined due to the angle but ddd is, and as a result, use 
+            # ddd
+            #
+            # Don't do anything, just let it go to the next section even though
+            # 'd1' or 'd2 is not key_up or key_down 
+            pass
+        
+        elif partner_key not in [FlowPath.key_up, FlowPath.key_down]:
+            return 0.0
+        # If the pressure in the injection line is below the other chamber and 
+        # you are using a theoretical check valve with instantaneous closing, 
+        # then there is no back flow, and hence no flow at all
+        elif check_valve:
+            if FlowPath.key_down.startswith('inj'):
+                return 0.0
+            
+            #     #This will be negative
+            #     DELTAp = FlowPath.State_down.p - FlowPath.State_up.p
+            # else:
+            #     #This will be positive
+            #     DELTAp = FlowPath.State_up.p - FlowPath.State_down.p 
+            
+            # # Using an approximation to a Heaviside step function to close off the
+            # # port gradually and improve numerical convergence due to continuous
+            # # first derivative
+            # if -10 < DELTAp < 10.0:
+            #     FlowPath.A *=  1/(1+np.exp(-10*(DELTAp-2)))
+            # elif DELTAp < -10.0:
+            #     return 0.0
+    
+        mdot = flow_models.IsentropicNozzle(FlowPath.A,
+                                            FlowPath.State_up,
+                                            FlowPath.State_down)
+        return mdot
+        
+    def _get_discharge_CVkey(self,phi,theta,inner_outer):
+        """
+        Find the CV that is in contact with the given discharge port location
+        
+        Parameters
+        ----------
+        phi : float
+            Involute angle of the discharge port location
+        theta : float
+            Crank angle in radians in the range [:math:`0,2\pi`]
+        inner_outer : string ['i','o']
+            'i' : involute angle corresponds to outer surface of fixed scroll
+            'o' : involute angle corresponds to inner surface of orb. scroll 
+            
+        Notes
+        -----
+        Typically 'i' will require a positive offset in involute angle of 
+        :math:`\pi` radians
+        """
+        if inner_outer == 'i':
+            phi_0 = self.geo.phi_i0
+            phi_s = self.geo.phi_is
+            phi_e = self.geo.phi_ie
+        elif inner_outer == 'o':
+            phi_0 = self.geo.phi_o0
+            phi_s = self.geo.phi_os
+            phi_e = self.geo.phi_oe-pi # The actual part of the wrap that could 
+                                        # have an injection port 
+        
+        Nc = scroll_geo.getNc(theta, self.geo)    
+        #Start at the outside of the given scroll wrap
+        # x1 where x is s,d,c has the inner involute of the fixed scroll as 
+        # its outer surface
+        if phi_e > phi > phi_e-theta:     
+            #It is a suction chamber    
+            return 's1' if inner_outer == 'i' else 's2'
+            
+        elif phi_e-theta > phi > phi_e-theta-2*pi*Nc:
+            #It is one of the compression chambers, figure out which one
+            for I in range(Nc+1):
+                if phi_e - theta - 2*pi*(I-1) > phi > phi_e - theta - 2*pi*I:
+                    i_str = '.'+str(I)
+                    break
+            return 'c1'+i_str if inner_outer == 'i' else 'c2'+i_str
+        
+        else:
+            return 'd1' if inner_outer == 'i' else 'd2'
+        
+    def Comp_to_Predischarge(self,FlowPath,phi,inner_outer,check_valve = False, A = 7e-6, **kwargs):
+        """
+        Function to calculate flow rate between discharge line and chamber
+        
+        Parameters
+        ----------
+        FlowPath : FlowPath instance
+        phi : involute angle where the port is located
+        inner_outer : string ['i','o']
+            'i' : involute angle corresponds to outer surface of fixed scroll
+            'o' : involute angle corresponds to inner surface of orb. scroll 
+        check_valve : boolean
+            If ``True``, there is an idealized check valve and flow can only go 
+            from chambers with key names that start with `discCV` to other chambers.
+            If ``False``, flow can go either direction
+        
+        """
+        #1. Figure out what CV is connected to the port
+        partner_key = self._get_discharge_CVkey(phi, self.theta, inner_outer)
+        FlowPath.A = A
+        #2. Based on what CV is connected to the port, maybe quit
+        if partner_key in ['d1', 'd2'] and 'ddd' in [FlowPath.key_up, 
+                                                        FlowPath.key_down]:
+            # Other chamber based on geometry is d1 or d2 but they are not 
+            # defined due to the angle but ddd is, and as a result, use 
+            # ddd
+            #
+            # Don't do anything, just let it go to the next section even though
+            # 'd1' or 'd2 is not key_up or key_down 
+            pass
+        
+        elif partner_key not in [FlowPath.key_up, FlowPath.key_down]:
+            return 0.0
+        # If the pressure in the injection line is below the other chamber and 
+        # you are using a theoretical check valve with instantaneous closing, 
+        # then there is no back flow, and hence no flow at all
+        elif check_valve:
+            if FlowPath.key_down.startswith('disc'):
+                return 0.0
+            
+            #     #This will be negative
+            #     DELTAp = FlowPath.State_down.p - FlowPath.State_up.p
+            # else:
+            #     #This will be positive
+            #     DELTAp = FlowPath.State_up.p - FlowPath.State_down.p 
+            
+            # # Using an approximation to a Heaviside step function to close off the
+            # # port gradually and improve numerical convergence due to continuous
+            # # first derivative
+            # if -10 < DELTAp < 10.0:
+            #     FlowPath.A *=  1/(1+np.exp(-10*(DELTAp-2)))
+            # elif DELTAp < -10.0:
+            #     return 0.0
+    
+        mdot = flow_models.IsentropicNozzle(FlowPath.A,
+                                            FlowPath.State_up,
+                                            FlowPath.State_down)
+        return mdot
+        
+    def calculate_force_terms(self, orbiting_back_pressure=None):
         """
         Calculate the force profiles, mean forces, moments, etc.
         
